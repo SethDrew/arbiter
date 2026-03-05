@@ -13,12 +13,13 @@ entries:
 
   - id: hook-based-permissions
     date: 2026-02-28
-    touched: 2026-03-02
+    touched: 2026-03-05
     title: Permission enforcement via Claude Code hooks, not middleware
     summary: >
-      Guardian uses PreToolUse and PostToolUse hooks (standalone .mjs files)
-      for permission enforcement, separate from the MCP server which handles
-      user-facing tools. Hooks are fast, stateless, and can't be bypassed.
+      Arbiter uses PreToolUse and PostToolUse hooks for permission enforcement,
+      separate from the MCP server which handles user-facing tools. Hooks are
+      invoked via `arbiter hook pre-tool-use` and `arbiter hook post-tool-use`
+      CLI subcommands, bundled into the same esbuild binary as the rest of Arbiter.
     status: implemented
     impact: high
     confidence: high
@@ -26,12 +27,22 @@ entries:
       - "Middleware in MCP server — rejected: couples permission logic to the server"
       - "Claude system prompt only — rejected: no enforcement, just suggestions"
     tags: [guardian, hooks, architecture]
-    relates_to: [context-based-policies]
+    relates_to: [context-based-policies, hook-ecosystem-conflicts]
     notes: >
-      The hook constraint (standalone .mjs, no compiled TS imports) shapes a lot
-      of downstream decisions. Any logic that runs in hooks must be duplicated
-      from the TS source as plain JS. This is a worthwhile trade-off for
-      decoupling and speed.
+      Originally implemented as standalone .mjs files that duplicated logic
+      from the TS source. Refactored in v0.1.0 to CLI subcommands (src/commands/hook.ts)
+      so hooks share the same compiled code as the policy engine. The esbuild
+      bundle means hooks are fast (~50ms cold start) and have no runtime deps.
+
+      Claude Code hook mechanism: settings.local.json registers command hooks
+      for PreToolUse and PostToolUse events. Hook reads tool_name + tool_input
+      from stdin, evaluates policy, returns JSON with decision (allow/deny/ask)
+      and hookEventName (required field, Claude Code bug #17088).
+
+      IMPORTANT: Claude Code processes multiple hooks sequentially for the same
+      event. Any hook returning permissionDecision: "allow" short-circuits the
+      chain — subsequent hooks don't gate the action. This has ecosystem
+      implications (see hook-ecosystem-conflicts).
 
   - id: context-based-policies
     date: 2026-02-28
@@ -52,6 +63,67 @@ entries:
     notes: >
       The mental model is "rooms" — you're in a room with certain rules, and
       you can walk to another room. Simple for non-technical users.
+
+  - id: hook-ecosystem-conflicts
+    date: 2026-03-05
+    touched: 2026-03-05
+    title: "Hook exclusivity: Arbiter conflicts with other PreToolUse hook tools"
+    summary: >
+      Claude Code's hook system allows multiple tools to register PreToolUse
+      hooks. Any hook returning permissionDecision "allow" can short-circuit
+      the chain, bypassing Arbiter's permission evaluation. This is a known
+      ecosystem conflict — tools like rtk-ai/rtk (3K+ stars, token compression)
+      auto-approve rewritten commands, which would skip Arbiter entirely if
+      their hook fires first.
+    status: accepted
+    impact: high
+    confidence: high
+    alternatives:
+      - "Ignore the problem — rejected: users will install both tools and hit silent failures"
+      - "Require Arbiter hooks to be first in the chain — fragile: user must manually order hooks"
+      - "Wrap other tools' hooks inside Arbiter — proposed: Arbiter evaluates permission first, then delegates to the other hook for rewriting"
+      - "Lobby Claude Code for hook priority/ordering API — deferred: depends on Anthropic"
+    tags: [hooks, architecture, ecosystem, compatibility]
+    relates_to: [hook-based-permissions]
+    notes: >
+      Known conflicting tools (as of March 2026):
+
+      - **rtk-ai/rtk** (3,200+ stars): Rewrites Bash commands to compress
+        output (e.g., `git status` → `rtk git status`). Its PreToolUse hook
+        returns permissionDecision "allow" with updatedInput for every command
+        it rewrites. If RTK fires before Arbiter, Arbiter never evaluates the
+        original command. RTK also has hook integrity verification (SHA-256)
+        which is a pattern worth adopting.
+
+      - **8+ other Claude Code permission hooks** exist in the ecosystem, all
+        with static rules. Any of these could conflict if a user installs
+        multiple hook-based tools.
+
+      The fundamental issue: Claude Code's hook model is "first allow wins"
+      for permissionDecision. There is no concept of hook priority, ordering,
+      or composition. Two hooks that both want to gate permissions will fight.
+
+      Possible resolution strategies (in order of preference):
+
+      1. **Arbiter as the orchestrator**: Arbiter's hook fires first, evaluates
+         permission. If allowed, it could invoke other registered hooks (like
+         RTK) as sub-processes and pass through their updatedInput. This makes
+         Arbiter the "permission layer" and other hooks the "transform layer."
+         Requires Arbiter to know about other hooks — coupling, but practical.
+
+      2. **Convention-based ordering**: Document that Arbiter hooks should be
+         listed FIRST in settings.local.json. Other tools' hooks come after.
+         Arbiter returns the permission decision; other hooks only transform.
+         Fragile but simple.
+
+      3. **Claude Code hook API improvements**: Request from Anthropic:
+         hook priority field, hook composition (pipe output of one to input
+         of next), or separate "permission" vs "transform" hook phases.
+         Filed as a feature request concept — not holding our breath.
+
+      For now: document the conflict clearly in README and `arbiter doctor`.
+      Add a diagnostic check that detects other PreToolUse hooks and warns
+      about potential conflicts.
 
   # ── Learning System ────────────────────────────────────────────────
 
