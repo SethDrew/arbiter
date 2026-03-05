@@ -1,0 +1,33 @@
+{
+  "name": "court-case",
+  "description": "Strict mode for sensitive legal work — extra careful with changes, no deletions, full audit trail",
+  "policies": {
+    "auto_approve": [
+      { "tool_pattern": "^Read$", "reason": "Reading files is safe" },
+      { "tool_pattern": "^Glob$", "reason": "Searching for files is safe" },
+      { "tool_pattern": "^Grep$", "reason": "Searching file contents is safe" },
+      { "tool_pattern": "^WebSearch$", "reason": "Web searches are safe" },
+      { "tool_pattern": "^WebFetch$", "reason": "Fetching web pages is safe" },
+      { "tool_pattern": "^mcp__arbiter__", "reason": "Arbiter management tools are always allowed" }
+    ],
+    "always_ask": [
+      { "tool_pattern": "^Write$", "reason": "Creating or overwriting files — need explicit approval for legal work" },
+      { "tool_pattern": "^Edit$", "reason": "Modifying files — verifying before any changes to legal documents" },
+      { "tool_pattern": "^Bash$", "reason": "Running a command — checking with you first in legal context" },
+      { "tool_pattern": "^NotebookEdit$", "reason": "Editing a notebook — confirming in legal context" },
+      { "tool_pattern": "^SendMessage$", "reason": "Sending a message — double-checking before sharing anything" }
+    ],
+    "deny": [
+      { "tool_pattern": "^Bash$", "input_pattern": "rm\\s|rmdir|delete|remove", "reason": "No deletions allowed during court case work — too risky to lose evidence" },
+      { "tool_pattern": "^Bash$", "input_pattern": "git\\s+push|git\\s+reset", "reason": "No pushing or resetting git history during legal work" }
+    ]
+  },
+  "audit_level": "full",
+  "behavior_notes": [
+    "Extra caution with all file operations",
+    "Never delete anything — legal evidence must be preserved",
+    "Always explain what you're about to do and why",
+    "Log everything in detail",
+    "Ask before sharing, sending, or publishing anything"
+  ]
+}

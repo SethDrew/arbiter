@@ -1,0 +1,236 @@
+# Architecture Decision Record — AI Assistant
+#
+# Permanent record of design choices, trade-offs, and future directions.
+# See ADR_GUIDE.md for format details and how to add entries.
+#
+# Status: proposed | accepted | implemented | deferred | superseded | rejected
+# Impact: high | medium | low  (how much this shapes the system)
+# Confidence: high | medium | low  (how sure we are)
+
+entries:
+
+  # ── Guardian Core Architecture ─────────────────────────────────────
+
+  - id: hook-based-permissions
+    date: 2026-02-28
+    touched: 2026-03-02
+    title: Permission enforcement via Claude Code hooks, not middleware
+    summary: >
+      Guardian uses PreToolUse and PostToolUse hooks (standalone .mjs files)
+      for permission enforcement, separate from the MCP server which handles
+      user-facing tools. Hooks are fast, stateless, and can't be bypassed.
+    status: implemented
+    impact: high
+    confidence: high
+    alternatives:
+      - "Middleware in MCP server — rejected: couples permission logic to the server"
+      - "Claude system prompt only — rejected: no enforcement, just suggestions"
+    tags: [guardian, hooks, architecture]
+    relates_to: [context-based-policies]
+    notes: >
+      The hook constraint (standalone .mjs, no compiled TS imports) shapes a lot
+      of downstream decisions. Any logic that runs in hooks must be duplicated
+      from the TS source as plain JS. This is a worthwhile trade-off for
+      decoupling and speed.
+
+  - id: context-based-policies
+    date: 2026-02-28
+    touched: 2026-03-02
+    title: Named contexts with separate policy sets
+    summary: >
+      Permission rules are organized into named contexts (daily-life, court-case)
+      with independent auto_approve/always_ask/deny rule sets. Only one context
+      is active at a time. Contexts are JSON files in contexts/.
+    status: implemented
+    impact: high
+    confidence: high
+    alternatives:
+      - "Single global policy — rejected: can't distinguish casual vs sensitive work"
+      - "Tag-based policies — considered: more flexible but harder to reason about"
+    tags: [guardian, permissions, architecture]
+    relates_to: [hook-based-permissions, contextual-learning]
+    notes: >
+      The mental model is "rooms" — you're in a room with certain rules, and
+      you can walk to another room. Simple for non-technical users.
+
+  # ── Learning System ────────────────────────────────────────────────
+
+  - id: contextual-learning
+    date: 2026-03-02
+    touched: 2026-03-02
+    title: "Input signatures for contextual approval learning"
+    summary: >
+      Instead of flat tool-name counting, extract meaningful signatures from
+      tool inputs (first command word, file extension, domain) so Guardian
+      learns "you always approve npm commands" not just "you approve Bash."
+      Approvals track per (tool, signature, context) with scope (context/global).
+    status: implemented
+    impact: high
+    confidence: medium
+    alternatives:
+      - "Flat tool-name counting — rejected: too coarse, npm and rm are both Bash"
+      - "Full input matching — rejected: too granular, every command is unique"
+    tags: [guardian, learning, data-model]
+    relates_to: [tier-evaluation-order, llm-classification]
+    notes: >
+      Signatures are mechanical pattern extraction — good for developer tools
+      (npm, git, file types) but insufficient for semantic actions (email,
+      calendar, messaging). This is the cache/fast-path layer that sits
+      underneath the LLM classification layer (see llm-classification).
+
+  - id: tier-evaluation-order
+    date: 2026-03-02
+    touched: 2026-03-02
+    title: "Evaluation order: deny → learned → always_ask → auto_approve → default"
+    summary: >
+      Learned preferences evaluate BEFORE always_ask rules, so learning can
+      graduate actions out of the "always ask" tier. Only deny rules are
+      inviolable. This is what makes learning useful — without it, learned
+      preferences would only affect the default tier.
+    status: implemented
+    impact: high
+    confidence: high
+    alternatives:
+      - "Learned after always_ask — rejected: learning would never override asking"
+      - "Learned before deny — rejected: deny must be a hard stop"
+    tags: [guardian, evaluation-order, architecture]
+    relates_to: [contextual-learning, hook-based-permissions]
+    notes: >
+      Originally had learned at tier 4 (after always_ask, auto_approve), but
+      this meant Bash always_ask caught everything before learned preferences
+      could fire. Moved to tier 2 during implementation.
+
+  # ── Semantic Classification (Path B) ───────────────────────────────
+
+  - id: llm-classification
+    date: 2026-03-02
+    touched: 2026-03-02
+    title: "LLM-in-the-loop for semantic action classification (Path B)"
+    summary: >
+      For actions that hit the "ask" tier, Claude classifies the action
+      semantically (routine/sensitive/dangerous) and explains it to the user
+      in those terms. The classification feeds into the learning system so
+      Guardian learns semantic patterns, not just mechanical signatures.
+    status: accepted
+    impact: high
+    confidence: medium
+    alternatives:
+      - "Path A: smarter extractSignature patterns — rejected: can't reason about intent"
+      - "Path C: intent-based approval chains — deferred: see intent-based-chains"
+    tags: [guardian, learning, llm, architecture]
+    relates_to: [contextual-learning, intent-based-chains]
+    notes: >
+      The key insight: hooks stay fast and deterministic for clear-cut cases.
+      The LLM only reasons about the "ask" tier — the ambiguous middle ground.
+      Claude is already the LLM in the loop (no separate API call needed),
+      so this is mostly about giving Claude the right context and recording
+      its classifications alongside mechanical signatures.
+
+  # ── Future Directions ──────────────────────────────────────────────
+
+  - id: intent-based-chains
+    date: 2026-03-02
+    touched: 2026-03-02
+    title: "Intent-based approval chains (Path C) — long-term vision"
+    summary: >
+      Instead of learning at the tool level, Guardian learns at the intent
+      level. "Scan recent emails for context" is an intent that covers multiple
+      tool calls. Approve the intent once, all tool calls within it are covered.
+      Future similar intents auto-approve.
+    status: deferred
+    impact: high
+    confidence: low
+    alternatives: []
+    tags: [guardian, learning, future, architecture]
+    relates_to: [llm-classification, contextual-learning]
+    notes: >
+      This is how a human assistant works: "you always let me check your
+      email in the morning, so I'll just do it." Requires:
+      1. Intent detection (Claude proposes an intent description)
+      2. Intent → tool-call mapping (which tool calls serve this intent)
+      3. Intent-level learning (approve the intent, not each tool call)
+      4. Intent similarity matching (is "check today's emails" the same
+         as "scan recent emails"?)
+
+      Path B is the stepping stone — it adds semantic understanding to
+      individual approvals, which eventually feeds into intent grouping.
+      Revisit when the mechanical learning system is stable and we have
+      real-world usage patterns from MCP tools (email, calendar, etc).
+
+  # ── Approval UX ─────────────────────────────────────────────────────
+
+  - id: three-tier-approval-ux
+    date: 2026-03-02
+    touched: 2026-03-02
+    title: "Three approval modes: immediate, wizard, passive"
+    summary: >
+      N=3 passive learning is a fine fallback for patterns that emerge
+      organically, but shouldn't be the only path. Users who already know
+      what they need should be able to declare it immediately. Three modes:
+      inline options (allow once / this session / always this kind),
+      permissions wizard (guided setup conversation before work starts),
+      and passive learning (current N=3 threshold as fallback).
+    status: proposed
+    impact: high
+    confidence: medium
+    alternatives:
+      - "N=3 only — rejected as sole path: arbitrary threshold, slow for known needs"
+      - "Wizard only — rejected: too much upfront ceremony for casual use"
+      - "All three together — proposed: each covers a different user state"
+    tags: [guardian, ux, learning, permissions]
+    relates_to: [contextual-learning, llm-classification, intent-based-chains]
+    notes: >
+      Key insight: the three modes map to different user states:
+
+      1. **Inline options** ("always allow this kind of request") — user knows
+         RIGHT NOW that this is fine. Skip the threshold, go straight to
+         learning. Works through Claude's conversation since hooks can only
+         return allow/deny/ask — Claude offers the choices, user responds,
+         Claude calls guardian_learn_preference. No hook-layer changes needed.
+
+      2. **Permissions wizard** ("let's set up email access before we start") —
+         user is about to start a new kind of work and wants to front-load
+         the permission decisions. Could be a dedicated MCP tool
+         (guardian_permissions_wizard) or just a conversational pattern
+         where Claude walks through what access is needed.
+
+      3. **Passive learning** (current N=3 fallback) — patterns the user didn't
+         think to declare. Guardian notices and suggests. Good safety net.
+
+      The inline options are the highest-value, lowest-effort change. Claude
+      already has the context from the classification prompt (Path B) to
+      offer meaningful choices like "want me to always allow reading your
+      emails in daily-life?" right at the moment of the first ask.
+
+      Session-scoped approval is interesting — needs a "session" concept
+      that doesn't currently exist. Could use a session ID in the approval
+      entry that expires, or just an in-memory set that the hook maintains
+      (but hooks are stateless processes... would need a session file).
+
+      Needs user testing to validate which modes matter most and whether
+      the N=3 fallback threshold is right (could be N=1 with a confirmation,
+      or configurable per context).
+
+  # ── Meta / Process ─────────────────────────────────────────────────
+
+  - id: adr-format
+    date: 2026-03-02
+    touched: 2026-03-02
+    title: Architecture Decision Records adapted from research ledger format
+    summary: >
+      Design decisions tracked in YAML using a format adapted from the
+      audio-reactive project's research ledger. Same philosophy: track how
+      we think about the system, not what we built.
+    status: implemented
+    impact: low
+    confidence: high
+    alternatives:
+      - "Markdown ADR files (one per decision) — considered: more standard but harder to browse"
+      - "Plain text notes — rejected: no structure, hard to search"
+    tags: [process, architecture]
+    relates_to: []
+    notes: >
+      The ledger format works well because decisions evolve — they start as
+      sparks (proposed), get validated (accepted), get built (implemented),
+      and sometimes get replaced (superseded). The status vocabulary captures
+      this lifecycle.

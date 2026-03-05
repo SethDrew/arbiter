@@ -1,0 +1,27 @@
+{
+  "name": "daily-life",
+  "description": "Relaxed everyday mode — auto-approves reading and searching, asks before making changes",
+  "policies": {
+    "auto_approve": [
+      { "tool_pattern": "^Read$", "reason": "Reading files is always safe" },
+      { "tool_pattern": "^Glob$", "reason": "Searching for files is always safe" },
+      { "tool_pattern": "^Grep$", "reason": "Searching file contents is always safe" },
+      { "tool_pattern": "^WebSearch$", "reason": "Web searches are safe" },
+      { "tool_pattern": "^WebFetch$", "reason": "Fetching web pages is safe" },
+      { "tool_pattern": "^mcp__arbiter__", "reason": "Arbiter management tools are always allowed" }
+    ],
+    "always_ask": [
+      { "tool_pattern": "^Write$", "reason": "Creating or overwriting files — let me check with you first" },
+      { "tool_pattern": "^Edit$", "reason": "Modifying files — let me confirm before changing anything" },
+      { "tool_pattern": "^Bash$", "reason": "Running a command — I'll explain what it does first" },
+      { "tool_pattern": "^NotebookEdit$", "reason": "Editing a notebook — let me verify this is what you want" }
+    ],
+    "deny": []
+  },
+  "audit_level": "standard",
+  "behavior_notes": [
+    "Use friendly, non-technical language",
+    "Explain what you're doing before you do it",
+    "If something seems risky, explain why and ask"
+  ]
+}

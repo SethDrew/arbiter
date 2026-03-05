@@ -1,0 +1,48 @@
+{
+  "name": "arbiter",
+  "version": "0.1.0",
+  "description": "Adaptive permission governance for AI coding assistants. Context-aware policies, learning from approvals, structured risk classification.",
+  "type": "module",
+  "bin": {
+    "arbiter": "dist/arbiter.js"
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "build:guardian": "cd guardian && npx tsc",
+    "build:all": "npm run build:guardian && npm run build",
+    "dev": "npm run build:guardian && npm run build",
+    "test": "cd partner-env && claude"
+  },
+  "files": [
+    "dist/arbiter.js",
+    "templates/"
+  ],
+  "keywords": [
+    "claude-code",
+    "permissions",
+    "governance",
+    "ai-agent",
+    "mcp",
+    "hooks",
+    "adaptive",
+    "context-aware"
+  ],
+  "author": "Seth Drew",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SethDrew/arbiter"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.24.0"
+  }
+}
