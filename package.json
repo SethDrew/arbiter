@@ -11,7 +11,6 @@
     "build:guardian": "cd guardian && npx tsc",
     "build:all": "npm run build:guardian && npm run build",
     "dev": "npm run build:guardian && npm run build",
-    "prepare": "node esbuild.config.mjs 2>/dev/null || true",
     "test": "cd partner-env && claude"
   },
   "files": [
@@ -38,12 +37,10 @@
     "node": ">=20.0.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
     "@types/node": "^20.0.0",
     "esbuild": "^0.25.0",
-    "typescript": "^5.5.0"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "typescript": "^5.5.0",
     "zod": "^3.24.0"
   }
 }
