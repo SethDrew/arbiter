@@ -1,7 +1,6 @@
 node_modules/
 guardian/node_modules/
 guardian/dist/
-dist/
 *.log
 /tmp/
 .DS_Store

@@ -11,7 +11,7 @@
     "build:guardian": "cd guardian && npx tsc",
     "build:all": "npm run build:guardian && npm run build",
     "dev": "npm run build:guardian && npm run build",
-    "prepare": "node esbuild.config.mjs",
+    "prepare": "node esbuild.config.mjs 2>/dev/null || true",
     "test": "cd partner-env && claude"
   },
   "files": [
